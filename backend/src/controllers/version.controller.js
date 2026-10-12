@@ -77,7 +77,10 @@ const createVersion = async (req, res, next) => {
       project.references = Array.isArray(references) ? references : [references];
     }
     project.currentVersion = nextVersionNumber;
-    project.status = 'draft'; // Reverts to draft on new version for editing / re-submission
+    // If project was under revision_requested, keep it as revision_requested for student resubmission
+    if (project.status !== 'revision_requested') {
+      project.status = 'draft';
+    }
     await project.save();
 
     // Create version record

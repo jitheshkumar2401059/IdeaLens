@@ -1,9 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
+import { finalize } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { ProjectService } from '../../core/services/project.service';
 import { AdminService } from '../../core/services/admin.service';
+import { DashboardService, StudentDashboardStats, FacultyDashboardStats } from '../../core/services/dashboard.service';
 import { Project } from '../../core/models/project.model';
 import { PlatformStats } from '../../core/models/stats.model';
 import { StatCardComponent } from '../../shared/components/stat-card/stat-card.component';
@@ -47,13 +49,21 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
         </div>
       </div>
 
+      <!-- Error State Banner -->
+      <div *ngIf="errorMessage" class="error-banner glass-card" style="padding: 16px 20px; border-left: 4px solid var(--accent-rose); background: rgba(239, 68, 68, 0.12); color: #fca5a5; display: flex; justify-content: space-between; align-items: center; border-radius: var(--radius-md);">
+        <div>
+          <strong>Error loading dashboard:</strong> {{ errorMessage }}
+        </div>
+        <button (click)="retryLoading()" class="btn btn-secondary btn-sm">Retry</button>
+      </div>
+
       <!-- STUDENT DASHBOARD VIEW -->
       <div *ngIf="authService.isStudent()">
         <!-- Student KPI Cards -->
         <div class="grid-cols-4 stats-grid">
           <app-stat-card
             title="Total Projects"
-            [value]="studentProjects.length"
+            [value]="isLoadingStudent && !studentStats ? '...' : (studentStats?.totalProjects ?? studentProjects.length)"
             subtitle="Registered in your workspace"
             accentColor="var(--primary-500)"
           >
@@ -62,7 +72,7 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
 
           <app-stat-card
             title="Draft Projects"
-            [value]="countStatus('draft')"
+            [value]="isLoadingStudent && !studentStats ? '...' : (studentStats?.draft ?? (studentStats?.draftProjects ?? countStatus('draft')))"
             subtitle="Awaiting final submission"
             accentColor="var(--status-draft)"
           >
@@ -71,7 +81,7 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
 
           <app-stat-card
             title="Submitted & Review"
-            [value]="countStatus('submitted') + countStatus('under_review')"
+            [value]="isLoadingStudent && !studentStats ? '...' : ((studentStats?.submitted !== undefined && studentStats?.underReview !== undefined) ? (studentStats?.submitted! + studentStats?.underReview!) : (studentStats?.submittedProjects ?? (countStatus('submitted') + countStatus('under_review'))))"
             subtitle="Under faculty review"
             accentColor="var(--status-under-review)"
           >
@@ -80,7 +90,7 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
 
           <app-stat-card
             title="Approved Ideas"
-            [value]="countStatus('approved')"
+            [value]="isLoadingStudent && !studentStats ? '...' : (studentStats?.approved ?? (studentStats?.approvedProjects ?? countStatus('approved')))"
             subtitle="Successfully cleared capstone review"
             accentColor="var(--status-approved)"
           >
@@ -199,7 +209,7 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
         <div class="grid-cols-4 stats-grid">
           <app-stat-card
             title="Total Submissions"
-            [value]="facultySubmissions.length"
+            [value]="isLoadingFaculty && !facultyStats ? '...' : (facultyStats?.totalSubmissions ?? facultySubmissions.length)"
             subtitle="Projects across college departments"
             accentColor="var(--primary-400)"
           >
@@ -208,7 +218,7 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
 
           <app-stat-card
             title="Pending Review"
-            [value]="countFacultyStatus('submitted') + countFacultyStatus('resubmitted')"
+            [value]="isLoadingFaculty && !facultyStats ? '...' : (facultyStats?.pendingReview ?? (countFacultyStatus('submitted') + countFacultyStatus('resubmitted')))"
             subtitle="Awaiting your faculty evaluation"
             accentColor="var(--accent-amber)"
           >
@@ -217,7 +227,7 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
 
           <app-stat-card
             title="Approved Ideas"
-            [value]="countFacultyStatus('approved')"
+            [value]="isLoadingFaculty && !facultyStats ? '...' : (facultyStats?.approved ?? (facultyStats?.approvedProjects ?? countFacultyStatus('approved')))"
             subtitle="Cleared capstone standards"
             accentColor="var(--accent-emerald)"
           >
@@ -226,7 +236,7 @@ import { BadgeComponent } from '../../shared/components/badge/badge.component';
 
           <app-stat-card
             title="Revisions Requested"
-            [value]="countFacultyStatus('revision_requested')"
+            [value]="isLoadingFaculty && !facultyStats ? '...' : (facultyStats?.revisionRequested ?? (facultyStats?.revisionProjects ?? countFacultyStatus('revision_requested')))"
             subtitle="Sent back for student iteration"
             accentColor="var(--accent-rose)"
           >
@@ -643,6 +653,12 @@ export class DashboardComponent implements OnInit {
   studentProjects: Project[] = [];
   facultySubmissions: Project[] = [];
   platformStats: PlatformStats | null = null;
+  studentStats: StudentDashboardStats | null = null;
+  facultyStats: FacultyDashboardStats | null = null;
+  isLoadingStudent = false;
+  isLoadingFaculty = false;
+  isLoadingAdmin = false;
+  errorMessage: string | null = null;
 
   statusDistribution: { name: string; count: number; percentage: number; color: string }[] = [];
   studentDomains: { domain: string; count: number }[] = [];
@@ -650,10 +666,16 @@ export class DashboardComponent implements OnInit {
   constructor(
     public authService: AuthService,
     private projectService: ProjectService,
-    private adminService: AdminService
+    private adminService: AdminService,
+    private dashboardService: DashboardService
   ) {}
 
   ngOnInit() {
+    this.loadDashboardData();
+  }
+
+  loadDashboardData() {
+    this.errorMessage = null;
     if (this.authService.isStudent()) {
       this.loadStudentDashboard();
     } else if (this.authService.isFaculty()) {
@@ -661,6 +683,10 @@ export class DashboardComponent implements OnInit {
     } else if (this.authService.isAdmin()) {
       this.loadAdminDashboard();
     }
+  }
+
+  retryLoading() {
+    this.loadDashboardData();
   }
 
   getRoleSubtext(): string {
@@ -671,41 +697,56 @@ export class DashboardComponent implements OnInit {
   }
 
   loadStudentDashboard() {
-    this.projectService.getProjects({ mine: true }).subscribe({
+    this.isLoadingStudent = true;
+    this.dashboardService.getStudentStats().pipe(
+      finalize(() => { this.isLoadingStudent = false; })
+    ).subscribe({
       next: (res) => {
-        this.studentProjects = res.data;
+        this.studentStats = res.data;
         this.computeStudentAnalytics();
+      },
+      error: (err) => {
+        this.errorMessage = err?.error?.message || 'Could not load student dashboard metrics from server.';
+      }
+    });
+
+    this.projectService.getProjects({ mine: true }).pipe(
+      finalize(() => { this.isLoadingStudent = false; })
+    ).subscribe({
+      next: (res) => {
+        this.studentProjects = res.data || [];
+        this.computeStudentAnalytics();
+      },
+      error: (err) => {
+        if (!this.studentStats) {
+          this.errorMessage = err?.error?.message || 'Could not load student projects from server.';
+        }
       }
     });
   }
 
   computeStudentAnalytics() {
-    const total = this.studentProjects.length || 1;
-    const statuses = [
-      { name: 'Draft', key: 'draft', color: 'var(--status-draft)' },
-      { name: 'Submitted / Review', key: 'submitted', color: 'var(--status-under-review)' },
-      { name: 'Approved', key: 'approved', color: 'var(--status-approved)' },
-      { name: 'Revision Requested', key: 'revision_requested', color: 'var(--status-revision)' }
-    ];
+    const total = this.studentStats?.totalProjects ?? (this.studentProjects.length || 0);
+    const draftCount = this.studentStats?.draft ?? (this.studentStats?.draftProjects ?? this.countStatus('draft'));
+    const submittedCount = (this.studentStats?.submitted !== undefined && this.studentStats?.underReview !== undefined)
+      ? (this.studentStats.submitted + this.studentStats.underReview)
+      : (this.studentStats?.submittedProjects ?? (this.countStatus('submitted') + this.countStatus('under_review') + this.countStatus('resubmitted')));
+    const approvedCount = this.studentStats?.approved ?? (this.studentStats?.approvedProjects ?? this.countStatus('approved'));
+    const revisionCount = this.studentStats?.revisionRequested ?? (this.studentStats?.revisionProjects ?? this.countStatus('revision_requested'));
 
-    this.statusDistribution = statuses.map(s => {
-      let count = 0;
-      if (s.key === 'submitted') {
-        count = this.studentProjects.filter(p => p.status === 'submitted' || p.status === 'under_review' || p.status === 'resubmitted').length;
-      } else {
-        count = this.studentProjects.filter(p => p.status === s.key).length;
-      }
-      return {
-        name: s.name,
-        count,
-        percentage: Math.round((count / total) * 100),
-        color: s.color
-      };
-    });
+    const denom = total > 0 ? total : 1;
+    this.statusDistribution = [
+      { name: 'Draft', count: draftCount, percentage: Math.round((draftCount / denom) * 100), color: 'var(--status-draft)' },
+      { name: 'Submitted / Review', count: submittedCount, percentage: Math.round((submittedCount / denom) * 100), color: 'var(--status-under-review)' },
+      { name: 'Approved', count: approvedCount, percentage: Math.round((approvedCount / denom) * 100), color: 'var(--status-approved)' },
+      { name: 'Revision Requested', count: revisionCount, percentage: Math.round((revisionCount / denom) * 100), color: 'var(--status-revision)' }
+    ];
 
     const domainMap: { [key: string]: number } = {};
     for (const p of this.studentProjects) {
-      domainMap[p.domain] = (domainMap[p.domain] || 0) + 1;
+      if (p.domain) {
+        domainMap[p.domain] = (domainMap[p.domain] || 0) + 1;
+      }
     }
     this.studentDomains = Object.entries(domainMap).map(([domain, count]) => ({ domain, count }));
   }
@@ -715,9 +756,28 @@ export class DashboardComponent implements OnInit {
   }
 
   loadFacultyDashboard() {
-    this.projectService.getProjects().subscribe({
+    this.isLoadingFaculty = true;
+    this.dashboardService.getFacultyStats().pipe(
+      finalize(() => { this.isLoadingFaculty = false; })
+    ).subscribe({
       next: (res) => {
-        this.facultySubmissions = res.data;
+        this.facultyStats = res.data;
+      },
+      error: (err) => {
+        this.errorMessage = err?.error?.message || 'Could not load faculty evaluation metrics from server.';
+      }
+    });
+
+    this.projectService.getProjects().pipe(
+      finalize(() => { this.isLoadingFaculty = false; })
+    ).subscribe({
+      next: (res) => {
+        this.facultySubmissions = res.data || [];
+      },
+      error: (err) => {
+        if (!this.facultyStats) {
+          this.errorMessage = err?.error?.message || 'Could not load submissions queue from server.';
+        }
       }
     });
   }
@@ -739,9 +799,15 @@ export class DashboardComponent implements OnInit {
   }
 
   loadAdminDashboard() {
-    this.adminService.getPlatformStats().subscribe({
+    this.isLoadingAdmin = true;
+    this.adminService.getPlatformStats().pipe(
+      finalize(() => { this.isLoadingAdmin = false; })
+    ).subscribe({
       next: (res) => {
         this.platformStats = res.data;
+      },
+      error: (err) => {
+        this.errorMessage = err?.error?.message || 'Could not load platform administrator metrics.';
       }
     });
   }

@@ -4,6 +4,8 @@ import { provideRouter } from '@angular/router';
 import { AppComponent } from './app.component';
 import { AuthService } from './core/services/auth.service';
 import { ToastService } from './core/services/toast.service';
+import { DashboardService } from './core/services/dashboard.service';
+import { ProjectService } from './core/services/project.service';
 
 describe('IdeaLens Frontend Components & Core Services', () => {
   beforeEach(async () => {
@@ -43,4 +45,15 @@ describe('IdeaLens Frontend Components & Core Services', () => {
     expect(auth.isAuthenticated()).toBe(false);
     expect(auth.userRole()).toBeNull();
   });
+
+  it('should instantiate DashboardService and ProjectService properly', () => {
+    const dashboardService = TestBed.inject(DashboardService);
+    const projectService = TestBed.inject(ProjectService);
+    expect(dashboardService).toBeTruthy();
+    expect(projectService).toBeTruthy();
+    expect(typeof dashboardService.getStats).toBe('function');
+    expect(typeof dashboardService.getStudentStats).toBe('function');
+    expect(typeof projectService.getProjects).toBe('function');
+  });
 });
+

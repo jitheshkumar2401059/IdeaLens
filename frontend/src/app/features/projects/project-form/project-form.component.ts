@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router, ActivatedRoute, RouterModule } from '@angular/router';
+import { finalize } from 'rxjs';
 import { ProjectService } from '../../../core/services/project.service';
 import { ToastService } from '../../../core/services/toast.service';
 
@@ -357,26 +358,26 @@ export class ProjectFormComponent implements OnInit {
     };
 
     if (this.isEditMode && this.projectId) {
-      this.projectService.updateProject(this.projectId, payload).subscribe({
+      this.projectService.updateProject(this.projectId, payload).pipe(
+        finalize(() => { this.isSubmitting = false; })
+      ).subscribe({
         next: (res) => {
-          this.isSubmitting = false;
           this.toast.success('Project idea updated successfully');
           this.router.navigate(['/projects', this.projectId]);
         },
         error: (err) => {
-          this.isSubmitting = false;
           this.toast.error(err.error?.message || 'Update failed');
         }
       });
     } else {
-      this.projectService.createProject(payload).subscribe({
+      this.projectService.createProject(payload).pipe(
+        finalize(() => { this.isSubmitting = false; })
+      ).subscribe({
         next: (res) => {
-          this.isSubmitting = false;
           this.toast.success('Project idea created with Version 1!');
           this.router.navigate(['/projects', res.data._id]);
         },
         error: (err) => {
-          this.isSubmitting = false;
           this.toast.error(err.error?.message || 'Creation failed');
         }
       });

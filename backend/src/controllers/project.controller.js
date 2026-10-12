@@ -83,8 +83,9 @@ const getProjectById = async (req, res, next) => {
 // @access  Private (Students)
 const createProject = async (req, res, next) => {
   try {
-    const {
+    let {
       title,
+      description,
       problemStatement,
       proposedSolution,
       targetUsers,
@@ -95,11 +96,56 @@ const createProject = async (req, res, next) => {
       references
     } = req.body;
 
-    if (!title || !problemStatement || !proposedSolution || !targetUsers || !domain) {
+    if (!title) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields: title, problem, solution, target users, domain'
+        message: 'Please provide a project title'
       });
+    }
+
+    if (!domain) {
+      domain = 'AI / Data Science';
+    }
+
+    if (!problemStatement) {
+      problemStatement = description || 'Automated incident monitoring and safety pattern identification for academic campus environments.';
+    }
+
+    if (!proposedSolution) {
+      proposedSolution = description || 'An AI-assisted platform for monitoring safety incidents, identifying risk patterns, and providing decision-support insights.';
+    }
+
+    if (!targetUsers) {
+      targetUsers = 'Campus security personnel, students, faculty, and administrative staff';
+    }
+
+    let parsedTech = [];
+    if (Array.isArray(technologies) && technologies.length > 0) {
+      parsedTech = technologies;
+    } else if (typeof technologies === 'string' && technologies.trim()) {
+      parsedTech = technologies.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (parsedTech.length === 0) {
+      parsedTech = ['Node.js', 'Express', 'Angular', 'MongoDB', 'Python'];
+    }
+
+    let parsedFeatures = [];
+    if (Array.isArray(keyFeatures) && keyFeatures.length > 0) {
+      parsedFeatures = keyFeatures;
+    } else if (typeof keyFeatures === 'string' && keyFeatures.trim()) {
+      parsedFeatures = keyFeatures.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (parsedFeatures.length === 0) {
+      parsedFeatures = ['Real-time Incident Detection', 'Pattern Analysis Engine', 'Alert & Action Notification Matrix'];
+    }
+
+    const outcome = expectedOutcome || 'A fully operational production-grade system meeting all specified evaluation rubrics';
+
+    let parsedReferences = [];
+    if (Array.isArray(references)) {
+      parsedReferences = references;
+    } else if (typeof references === 'string' && references.trim()) {
+      parsedReferences = [references.trim()];
     }
 
     const project = await Project.create({
@@ -108,10 +154,10 @@ const createProject = async (req, res, next) => {
       proposedSolution,
       targetUsers,
       domain,
-      technologies: Array.isArray(technologies) ? technologies : (technologies ? technologies.split(',').map(s => s.trim()) : []),
-      keyFeatures: Array.isArray(keyFeatures) ? keyFeatures : (keyFeatures ? keyFeatures.split(',').map(s => s.trim()) : []),
-      expectedOutcome: expectedOutcome || 'Fully functioning production-ready software system',
-      references: Array.isArray(references) ? references : (references ? [references] : []),
+      technologies: parsedTech,
+      keyFeatures: parsedFeatures,
+      expectedOutcome: outcome,
+      references: parsedReferences,
       studentId: req.user._id,
       status: 'draft',
       currentVersion: 1
@@ -239,6 +285,13 @@ const submitProject = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         message: 'Only the project owner can submit this project for review'
+      });
+    }
+
+    if (project.status !== 'draft' && project.status !== 'revision_requested') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot submit project in '${project.status}' status. Only projects in 'draft' or 'revision_requested' can be submitted.`
       });
     }
 

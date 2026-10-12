@@ -32,5 +32,5 @@ export interface Analysis {
 export interface AnalysisResponse {
   success: boolean;
   message?: string;
-  data: Analysis;
+  data: Analysis | null;
 }

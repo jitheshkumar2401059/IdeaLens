@@ -1,4 +1,4 @@
-import { Component, OnInit, Output, EventEmitter } from '@angular/core';
+import { Component, OnInit, Output, EventEmitter, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
@@ -345,7 +345,15 @@ export class NavbarComponent implements OnInit {
   constructor(
     public authService: AuthService,
     public notificationService: NotificationService
-  ) {}
+  ) {
+    effect(() => {
+      if (this.authService.isAuthenticated()) {
+        this.notificationService.fetchNotifications().subscribe({
+          error: () => {}
+        });
+      }
+    });
+  }
 
   ngOnInit() {
     if (this.authService.isAuthenticated()) {

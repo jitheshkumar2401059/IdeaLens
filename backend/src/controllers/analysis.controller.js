@@ -44,6 +44,11 @@ const analyzeProject = async (req, res, next) => {
 // @access  Private
 const getProjectAnalysis = async (req, res, next) => {
   try {
+    const project = await Project.findById(req.params.id);
+    if (!project || project.isArchived) {
+      return res.status(404).json({ success: false, message: 'Project not found' });
+    }
+
     const versionNumber = req.query.version ? parseInt(req.query.version, 10) : undefined;
     const filter = { projectId: req.params.id };
     if (versionNumber) {
@@ -53,8 +58,9 @@ const getProjectAnalysis = async (req, res, next) => {
     const analysis = await Analysis.findOne(filter).sort({ versionNumber: -1, createdAt: -1 });
 
     if (!analysis) {
-      return res.status(404).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
+        data: null,
         message: 'No AI analysis found for this project yet. Click "Analyze Idea" to generate.'
       });
     }

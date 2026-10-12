@@ -14,15 +14,43 @@ const traceabilityRoutes = require('./routes/traceability.routes');
 const adminRoutes = require('./routes/admin.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const domainRoutes = require('./routes/domain.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 
 const app = express();
 
-// Middlewares
+// Disable ETags globally so dynamic authenticated REST endpoints never return 304 Not Modified
+app.set('etag', false);
+
+// CORS configuration
+const allowedOrigins = [
+  CLIENT_URL,
+  'http://localhost:4200',
+  'http://127.0.0.1:4200'
+].filter(Boolean);
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Prevent stale HTTP caching on all authenticated and dynamic REST API endpoints
+app.use('/api', (req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -41,10 +69,11 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// API Routes
+// API Routes - mount specific sub-resource routes before generic parameterized routes
 app.use('/api/auth', authRoutes);
-app.use('/api/projects', projectRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/projects', traceabilityRoutes);
+app.use('/api/projects', projectRoutes);
 app.use('/api/similarity', similarityRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);

@@ -47,6 +47,28 @@ const createReview = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
+    if (project.status === 'draft') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot review a project that is in draft. Student must submit the project first.'
+      });
+    }
+
+    if (project.status === 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'This project is already approved and completed.'
+      });
+    }
+
+    const allowedDecisions = ['approved', 'revision_requested', 'under_review', 'rejected'];
+    if (!allowedDecisions.includes(statusDecision)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid review decision '${statusDecision}'. Allowed: ${allowedDecisions.join(', ')}`
+      });
+    }
+
     const review = await Review.create({
       projectId: project._id,
       facultyId: req.user._id,

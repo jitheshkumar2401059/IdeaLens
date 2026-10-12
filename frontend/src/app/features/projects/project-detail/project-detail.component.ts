@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { finalize } from 'rxjs';
 import { ProjectService } from '../../../core/services/project.service';
 import { AnalysisService } from '../../../core/services/analysis.service';
 import { SimilarityService } from '../../../core/services/similarity.service';
@@ -616,6 +617,14 @@ import { BadgeComponent } from '../../../shared/components/badge/badge.component
               <div class="req-code-badge">{{ req.reqCode }}</div>
               <h4 class="req-title">{{ req.title }}</h4>
               <span class="badge" [class.badge-approved]="req.status === 'completed'">{{ req.status }}</span>
+              <div class="trace-actions" *ngIf="isOwner()">
+                <button class="btn btn-secondary btn-xs" (click)="openAddFeatureModal(req._id)" title="Add Feature">
+                  + Feature
+                </button>
+                <button class="btn-delete-icon" (click)="deleteRequirement(req._id)" title="Delete Requirement">
+                  🗑️
+                </button>
+              </div>
             </div>
             <p class="req-desc">{{ req.description }}</p>
 
@@ -627,14 +636,33 @@ import { BadgeComponent } from '../../../shared/components/badge/badge.component
                   <span class="feat-code">{{ feat.code }}</span>
                   <span class="feat-title">{{ feat.title }}</span>
                   <span class="tag-pill">{{ feat.status }}</span>
+                  <div class="trace-actions" *ngIf="isOwner()">
+                    <button class="btn btn-secondary btn-xs" (click)="openAddTestCaseModal(feat._id, req._id)" title="Add Test Case">
+                      + Test Case
+                    </button>
+                    <button class="btn btn-secondary btn-xs" (click)="openAddIssueModal(feat._id, req._id)" title="Report Issue">
+                      + Issue
+                    </button>
+                    <button class="btn-delete-icon" (click)="deleteFeature(feat._id)" title="Delete Feature">
+                      🗑️
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Test Cases under this Feature -->
                 <div class="tests-nested" *ngIf="(feat.testCases || []).length > 0">
                   <div class="test-item" *ngFor="let tc of feat.testCases">
                     <span class="tc-code">{{ tc.code }}</span>
-                    <span>{{ tc.title }}</span>
+                    <span class="tc-title">{{ tc.title }}</span>
                     <span class="tc-status" [class.passed]="tc.status === 'passed'">{{ tc.status }}</span>
+                    <div class="trace-actions-mini" *ngIf="isOwner()">
+                      <button class="btn btn-secondary btn-xxs" (click)="openAddIssueModal(feat._id, req._id, tc._id)" title="Report Issue on Test Case">
+                        + Issue
+                      </button>
+                      <button class="btn-delete-icon-sm" (click)="deleteTestCase(tc._id)" title="Delete Test Case">
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -642,8 +670,12 @@ import { BadgeComponent } from '../../../shared/components/badge/badge.component
                 <div class="issues-nested" *ngIf="(feat.issues || []).length > 0">
                   <div class="issue-item" *ngFor="let iss of feat.issues">
                     <span class="iss-code">{{ iss.code }}</span>
-                    <span>{{ iss.title }}</span>
+                    <span class="iss-title">{{ iss.title }}</span>
                     <span class="iss-sev">{{ iss.severity }}</span>
+                    <span class="tag-pill">{{ iss.status }}</span>
+                    <button *ngIf="isOwner()" class="btn-delete-icon-sm" (click)="deleteIssue(iss._id)" title="Delete Issue">
+                      ✕
+                    </button>
                   </div>
                 </div>
               </div>
@@ -682,6 +714,89 @@ import { BadgeComponent } from '../../../shared/components/badge/badge.component
               <button class="btn btn-secondary" (click)="showNewReqModal = false">Cancel</button>
               <button class="btn btn-primary" (click)="submitRequirement()" [disabled]="!newReqTitle">
                 Save Requirement
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Feature Modal -->
+        <div class="modal-overlay" *ngIf="showNewFeatModal">
+          <div class="modal-box glass-panel">
+            <h4>Add Feature under Requirement</h4>
+            <div class="form-group mt-3">
+              <label>Feature Title *</label>
+              <input type="text" [(ngModel)]="newFeatTitle" placeholder="e.g. Real-Time Telemetry Streaming" />
+            </div>
+            <div class="form-group mt-3">
+              <label>Feature Description</label>
+              <textarea rows="3" [(ngModel)]="newFeatDesc" placeholder="Functional capability details..."></textarea>
+            </div>
+            <div class="form-group mt-3">
+              <label>Complexity</label>
+              <select [(ngModel)]="newFeatComplexity">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="complex">Complex</option>
+              </select>
+            </div>
+            <div class="modal-actions mt-4">
+              <button class="btn btn-secondary" (click)="showNewFeatModal = false">Cancel</button>
+              <button class="btn btn-primary" (click)="submitFeature()" [disabled]="!newFeatTitle">
+                Save Feature
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Test Case Modal -->
+        <div class="modal-overlay" *ngIf="showNewTcModal">
+          <div class="modal-box glass-panel">
+            <h4>Add Test Case</h4>
+            <div class="form-group mt-3">
+              <label>Test Case Title *</label>
+              <input type="text" [(ngModel)]="newTcTitle" placeholder="e.g. Verify Latency Below 50ms" />
+            </div>
+            <div class="form-group mt-3">
+              <label>Description</label>
+              <textarea rows="2" [(ngModel)]="newTcDesc" placeholder="Test execution steps..."></textarea>
+            </div>
+            <div class="form-group mt-3">
+              <label>Expected Result *</label>
+              <input type="text" [(ngModel)]="newTcExpected" placeholder="e.g. Telemetry packet acknowledged in <50ms" />
+            </div>
+            <div class="modal-actions mt-4">
+              <button class="btn btn-secondary" (click)="showNewTcModal = false">Cancel</button>
+              <button class="btn btn-primary" (click)="submitTestCase()" [disabled]="!newTcTitle || !newTcExpected">
+                Save Test Case
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Issue Modal -->
+        <div class="modal-overlay" *ngIf="showNewIssueModal">
+          <div class="modal-box glass-panel">
+            <h4>Report Issue / Bug</h4>
+            <div class="form-group mt-3">
+              <label>Issue Title *</label>
+              <input type="text" [(ngModel)]="newIssueTitle" placeholder="e.g. Packet drop on Wi-Fi reconnect" />
+            </div>
+            <div class="form-group mt-3">
+              <label>Issue Description</label>
+              <textarea rows="2" [(ngModel)]="newIssueDesc" placeholder="Root cause or bug behavior..."></textarea>
+            </div>
+            <div class="form-group mt-3">
+              <label>Severity</label>
+              <select [(ngModel)]="newIssueSeverity">
+                <option value="critical">Critical</option>
+                <option value="major">Major</option>
+                <option value="minor">Minor</option>
+              </select>
+            </div>
+            <div class="modal-actions mt-4">
+              <button class="btn btn-secondary" (click)="showNewIssueModal = false">Cancel</button>
+              <button class="btn btn-primary" (click)="submitIssue()" [disabled]="!newIssueTitle">
+                Save Issue
               </button>
             </div>
           </div>
@@ -802,6 +917,11 @@ import { BadgeComponent } from '../../../shared/components/badge/badge.component
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="loading-state" *ngIf="isLoadingProject && !project" style="text-align: center; padding: 60px 20px; color: var(--text-muted);">
+      <span class="animate-spin text-2xl" style="display: block; font-size: 2rem; margin-bottom: 12px;">⏳</span>
+      <span>Loading project details from MongoDB...</span>
     </div>
   `,
   styles: [`
@@ -1440,6 +1560,83 @@ import { BadgeComponent } from '../../../shared/components/badge/badge.component
       font-weight: bold;
     }
 
+    .trace-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .trace-actions-mini {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+    }
+
+    .btn-xs {
+      padding: 3px 8px;
+      font-size: 0.725rem;
+    }
+
+    .btn-xxs {
+      padding: 1px 6px;
+      font-size: 0.675rem;
+    }
+
+    .btn-delete-icon-sm {
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      opacity: 0.6;
+      font-size: 0.75rem;
+      color: var(--accent-rose);
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-delete-icon-sm:hover {
+      opacity: 1;
+      background: rgba(244, 63, 94, 0.2);
+    }
+
+    .issues-nested {
+      margin-top: 8px;
+      padding-left: 14px;
+      border-left: 2px solid rgba(244, 63, 94, 0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .issue-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.775rem;
+      color: var(--text-secondary);
+    }
+
+    .iss-code {
+      font-family: var(--font-mono);
+      color: var(--accent-rose);
+    }
+
+    .iss-title {
+      flex: 1;
+    }
+
+    .iss-sev {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: rgba(244, 63, 94, 0.1);
+      color: var(--accent-rose);
+      font-weight: 600;
+    }
+
     /* Reviews View */
     .rubric-grid {
       display: grid;
@@ -1592,6 +1789,7 @@ export class ProjectDetailComponent implements OnInit {
 
   isAnalyzing = false;
   isSubmittingReview = false;
+  isLoadingProject = true;
 
   // Version Diff state
   compareV1 = 1;
@@ -1602,11 +1800,29 @@ export class ProjectDetailComponent implements OnInit {
   newVersionTitle = '';
   newVersionTech = '';
 
-  // Traceability Modal
+  // Traceability Modals & State
   showNewReqModal = false;
   newReqTitle = '';
   newReqDesc = '';
   newReqPriority: 'critical' | 'high' | 'medium' | 'low' = 'high';
+
+  showNewFeatModal = false;
+  selectedReqId = '';
+  newFeatTitle = '';
+  newFeatDesc = '';
+  newFeatComplexity: 'easy' | 'medium' | 'complex' = 'medium';
+
+  showNewTcModal = false;
+  selectedFeatId = '';
+  newTcTitle = '';
+  newTcDesc = '';
+  newTcExpected = '';
+
+  showNewIssueModal = false;
+  selectedTcId = '';
+  newIssueTitle = '';
+  newIssueDesc = '';
+  newIssueSeverity: 'critical' | 'major' | 'minor' = 'major';
 
   // Faculty Review Form
   reviewDecision = 'approved';
@@ -1636,11 +1852,28 @@ export class ProjectDetailComponent implements OnInit {
 
   ngOnInit() {
     this.projectId = this.route.snapshot.paramMap.get('id')!;
+    const tabParam = this.route.snapshot.queryParamMap.get('tab');
+    if (tabParam && ['overview', 'analysis', 'similarity', 'suggestions', 'versions', 'traceability', 'reviews'].includes(tabParam)) {
+      this.activeTab = tabParam as any;
+    }
     this.loadProject();
+
+    if (this.activeTab === 'reviews') {
+      this.loadReviews();
+    } else if (this.activeTab === 'traceability') {
+      this.loadTraceability();
+    } else if (this.activeTab === 'versions') {
+      this.loadVersions();
+    }
   }
 
   loadProject() {
-    this.projectService.getProjectById(this.projectId).subscribe({
+    this.isLoadingProject = true;
+    this.projectService.getProjectById(this.projectId).pipe(
+      finalize(() => {
+        this.isLoadingProject = false;
+      })
+    ).subscribe({
       next: (res) => {
         this.project = res.data;
         this.loadAnalysis();
@@ -1673,16 +1906,18 @@ export class ProjectDetailComponent implements OnInit {
 
   runAnalysis() {
     this.isAnalyzing = true;
-    this.analysisService.analyzeProject(this.projectId).subscribe({
-      next: (res) => {
+    this.analysisService.analyzeProject(this.projectId).pipe(
+      finalize(() => {
         this.isAnalyzing = false;
+      })
+    ).subscribe({
+      next: (res) => {
         this.analysis = res.data.analysis;
         this.similarity = res.data.similarity;
         this.toast.success('AI Idea & Similarity Analysis generated!');
         this.activeTab = 'analysis';
       },
       error: (err) => {
-        this.isAnalyzing = false;
         this.toast.error(err.error?.message || 'Analysis error occurred');
       }
     });
@@ -1690,14 +1925,16 @@ export class ProjectDetailComponent implements OnInit {
 
   submitProjectForReview() {
     this.isSubmittingReview = true;
-    this.projectService.submitProject(this.projectId).subscribe({
-      next: (res) => {
+    this.projectService.submitProject(this.projectId).pipe(
+      finalize(() => {
         this.isSubmittingReview = false;
+      })
+    ).subscribe({
+      next: (res) => {
         this.project.status = res.data.status;
         this.toast.success('Project submitted for faculty evaluation!');
       },
       error: (err) => {
-        this.isSubmittingReview = false;
         this.toast.error(err.error?.message || 'Submission failed');
       }
     });
@@ -1710,7 +1947,7 @@ export class ProjectDetailComponent implements OnInit {
 
   isOwner(): boolean {
     const currentUserId = this.authService.currentUser()?.id || (this.authService.currentUser() as any)?._id;
-    const studentId = typeof this.project.studentId === 'object' ? (this.project.studentId as any)._id : this.project.studentId;
+    const studentId = typeof this.project?.studentId === 'object' ? (this.project.studentId as any)._id : this.project?.studentId;
     return currentUserId === studentId;
   }
 
@@ -1795,6 +2032,131 @@ export class ProjectDetailComponent implements OnInit {
     });
   }
 
+  deleteRequirement(id: string) {
+    if (!confirm('Are you sure you want to delete this requirement and attached artifacts?')) return;
+    this.traceabilityService.deleteRequirement(id).subscribe({
+      next: () => {
+        this.toast.success('Requirement deleted');
+        this.loadTraceability();
+      },
+      error: (err) => this.toast.error(err.error?.message || 'Failed to delete requirement')
+    });
+  }
+
+  openAddFeatureModal(reqId: string) {
+    this.selectedReqId = reqId;
+    this.newFeatTitle = '';
+    this.newFeatDesc = '';
+    this.newFeatComplexity = 'medium';
+    this.showNewFeatModal = true;
+  }
+
+  submitFeature() {
+    if (!this.newFeatTitle.trim()) return;
+    this.traceabilityService.createFeature(this.projectId, {
+      requirementId: this.selectedReqId,
+      title: this.newFeatTitle.trim(),
+      description: this.newFeatDesc.trim(),
+      complexity: this.newFeatComplexity
+    }).subscribe({
+      next: () => {
+        this.toast.success('Feature created successfully');
+        this.showNewFeatModal = false;
+        this.loadTraceability();
+      },
+      error: (err) => this.toast.error(err.error?.message || 'Failed to create feature')
+    });
+  }
+
+  deleteFeature(id: string) {
+    if (!confirm('Are you sure you want to delete this feature and associated test cases/issues?')) return;
+    this.traceabilityService.deleteFeature(id).subscribe({
+      next: () => {
+        this.toast.success('Feature deleted');
+        this.loadTraceability();
+      },
+      error: (err) => this.toast.error(err.error?.message || 'Failed to delete feature')
+    });
+  }
+
+  openAddTestCaseModal(featId: string, reqId: string) {
+    this.selectedFeatId = featId;
+    this.selectedReqId = reqId;
+    this.newTcTitle = '';
+    this.newTcDesc = '';
+    this.newTcExpected = '';
+    this.showNewTcModal = true;
+  }
+
+  submitTestCase() {
+    if (!this.newTcTitle.trim() || !this.newTcExpected.trim()) return;
+    this.traceabilityService.createTestCase(this.projectId, {
+      featureId: this.selectedFeatId,
+      requirementId: this.selectedReqId,
+      title: this.newTcTitle.trim(),
+      description: this.newTcDesc.trim(),
+      expectedResult: this.newTcExpected.trim()
+    }).subscribe({
+      next: () => {
+        this.toast.success('Test Case added successfully');
+        this.showNewTcModal = false;
+        this.loadTraceability();
+      },
+      error: (err) => this.toast.error(err.error?.message || 'Failed to create test case')
+    });
+  }
+
+  deleteTestCase(id: string) {
+    if (!confirm('Are you sure you want to delete this test case?')) return;
+    this.traceabilityService.deleteTestCase(id).subscribe({
+      next: () => {
+        this.toast.success('Test Case deleted');
+        this.loadTraceability();
+      },
+      error: (err) => this.toast.error(err.error?.message || 'Failed to delete test case')
+    });
+  }
+
+  openAddIssueModal(featId: string, reqId: string, tcId?: string) {
+    this.selectedFeatId = featId;
+    this.selectedReqId = reqId;
+    this.selectedTcId = tcId || '';
+    this.newIssueTitle = '';
+    this.newIssueDesc = '';
+    this.newIssueSeverity = 'major';
+    this.showNewIssueModal = true;
+  }
+
+  submitIssue() {
+    if (!this.newIssueTitle.trim()) return;
+    this.traceabilityService.createIssue(this.projectId, {
+      featureId: this.selectedFeatId,
+      requirementId: this.selectedReqId,
+      testCaseId: this.selectedTcId || undefined,
+      title: this.newIssueTitle.trim(),
+      description: this.newIssueDesc.trim() || this.newIssueTitle.trim(),
+      severity: this.newIssueSeverity
+    }).subscribe({
+      next: () => {
+        this.toast.success('Issue recorded successfully');
+        this.showNewIssueModal = false;
+        this.loadTraceability();
+      },
+      error: (err) => this.toast.error(err.error?.message || 'Failed to create issue')
+    });
+  }
+
+  deleteIssue(id: string) {
+    if (!confirm('Are you sure you want to delete this issue?')) return;
+    this.traceabilityService.deleteIssue(id).subscribe({
+      next: () => {
+        this.toast.success('Issue deleted');
+        this.loadTraceability();
+      },
+      error: (err) => this.toast.error(err.error?.message || 'Failed to delete issue')
+    });
+  }
+
   // Reviews Tab
   loadReviews() {
     this.reviewService.getProjectReviews(this.projectId).subscribe({
@@ -1816,6 +2178,7 @@ export class ProjectDetailComponent implements OnInit {
         this.project.status = res.data.statusDecision as any;
         this.reviewComments = '';
         this.loadReviews();
+        this.loadProject();
       },
       error: (err) => this.toast.error(err.error?.message || 'Review submission failed')
     });

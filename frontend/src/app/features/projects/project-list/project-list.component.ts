@@ -1,7 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { RouterModule, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { finalize } from 'rxjs';
 import { ProjectService } from '../../../core/services/project.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
@@ -134,9 +135,19 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
         <span>Loading project ideas from MongoDB...</span>
       </div>
 
+      <!-- Error State -->
+      <div class="error-state glass-card" *ngIf="!isLoading && errorMessage">
+        <span class="error-icon">⚠️</span>
+        <h3>Failed to Load Projects</h3>
+        <p>{{ errorMessage }}</p>
+        <button class="btn btn-primary btn-sm" (click)="loadProjects()">
+          🔄 Try Again
+        </button>
+      </div>
+
       <!-- Empty State -->
       <app-empty-state
-        *ngIf="!isLoading && projects.length === 0"
+        *ngIf="!isLoading && !errorMessage && projects.length === 0"
         icon="📁"
         title="No Project Ideas Found"
         description="Try adjusting your search criteria or domain filters, or create a brand new idea!"
@@ -320,11 +331,39 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
       gap: 12px;
       color: var(--text-muted);
     }
+
+    .error-state {
+      padding: 48px 24px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      max-width: 500px;
+      margin: 40px auto;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      background: rgba(244, 63, 94, 0.05);
+    }
+
+    .error-icon {
+      font-size: 2.5rem;
+    }
+
+    .error-state h3 {
+      font-size: 1.25rem;
+      color: var(--accent-rose);
+    }
+
+    .error-state p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
   `]
 })
 export class ProjectListComponent implements OnInit {
   projects: Project[] = [];
   isLoading = true;
+  errorMessage: string | null = null;
 
   searchQuery = '';
   selectedDomain = '';
@@ -350,7 +389,8 @@ export class ProjectListComponent implements OnInit {
   constructor(
     private projectService: ProjectService,
     public authService: AuthService,
-    private toast: ToastService
+    private toast: ToastService,
+    private router: Router
   ) {}
 
   ngOnInit() {
@@ -359,19 +399,24 @@ export class ProjectListComponent implements OnInit {
 
   loadProjects() {
     this.isLoading = true;
+    this.errorMessage = null;
     this.projectService.getProjects({
-      search: this.searchQuery || undefined,
+      search: this.searchQuery ? this.searchQuery.trim() : undefined,
       domain: this.selectedDomain || undefined,
       status: this.selectedStatus || undefined,
       sort: this.selectedSort || undefined,
       mine: this.mineFilter
-    }).subscribe({
+    }).pipe(
+      finalize(() => {
+        this.isLoading = false;
+      })
+    ).subscribe({
       next: (res) => {
-        this.projects = res.data;
-        this.isLoading = false;
+        this.projects = res?.data || [];
+        this.errorMessage = null;
       },
-      error: () => {
-        this.isLoading = false;
+      error: (err) => {
+        this.errorMessage = err?.error?.message || 'Unable to load projects from server. Please try again.';
         this.toast.error('Failed to load projects');
       }
     });
@@ -413,6 +458,6 @@ export class ProjectListComponent implements OnInit {
   }
 
   createNewProject() {
-    window.location.href = '/projects/new';
+    this.router.navigate(['/projects/new']);
   }
 }
